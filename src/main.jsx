@@ -62,10 +62,10 @@ function classifyAura({energy,bass,lowMid,mid,high,centroid,onset,flow,flux, bpm
     behaviour='Ascend'; shape='Wing'; personality='Guide'; creature='Sky Lantern'; feel='Yearning'; breathe='Slow Lift'; certainty=0.70 + melodic*0.17;
   }
   else if(groove > 0.52 && energy > 0.12){
-    behaviour='Groove'; shape='Serpent'; personality='Dancer'; creature='Groove Serpent'; feel='Playful'; breathe='Heartbeat'; certainty=0.78 + groove*0.13;
+    behaviour='Groove'; shape='Cloud'; personality='Dancer'; creature='Groove Blob'; feel='Playful'; breathe='Heartbeat'; certainty=0.78 + groove*0.13;
   }
   else if(forward > 0.50 && energy > 0.13){
-    behaviour='Wave'; shape='Wave'; personality='Explorer'; creature='Ocean Runner'; feel='Adventurous'; breathe='Forward Surge'; certainty=0.75 + forward*0.16;
+    behaviour='Flow'; shape='Cloud'; personality='Explorer'; creature='Motion Blob'; feel='Adventurous'; breathe='Forward Surge'; certainty=0.75 + forward*0.16;
   }
   else if(dream > 0.58 && energy < 0.36){
     behaviour='Dream Swirl'; shape='Spiral'; personality='Stoner'; creature='Purple Lantern'; feel='Dreamlike'; breathe='Meditation'; certainty=0.74 + dream*0.13;
@@ -112,6 +112,118 @@ function dominantFromTimeline(timeline, field){
   return sorted[0]?.[0] || 'Listening';
 }
 
+
+function averageProfile(timeline){
+  const rows = timeline.filter(Boolean);
+  if(!rows.length) return {energy:0, groove:0, dream:0, lift:0, forward:0, melodic:0};
+  const sum = rows.reduce((acc, r)=>{
+    acc.energy += r.energy || 0;
+    acc.groove += r.groove || 0;
+    acc.dream += r.dream || 0;
+    acc.lift += r.lift || 0;
+    acc.forward += r.forward || 0;
+    acc.melodic += r.melodic || 0;
+    return acc;
+  }, {energy:0, groove:0, dream:0, lift:0, forward:0, melodic:0});
+  Object.keys(sum).forEach(k=>sum[k] = sum[k] / rows.length);
+  return sum;
+}
+
+function chooseCreatureDNA(timeline, bpmHint=90){
+  const p = averageProfile(timeline);
+  const colour = dominantFromTimeline(timeline, 'dominant');
+  const feel = dominantFromTimeline(timeline, 'feel');
+  const breathe = dominantFromTimeline(timeline, 'breathe');
+  const shape = dominantFromTimeline(timeline, 'shape');
+  const personality = dominantFromTimeline(timeline, 'personality');
+
+  // The creature is the song's performer. Pick it from the broad movement profile,
+  // then let moment-to-moment audio evolve its state. Do not re-species it every bar.
+  let creature = 'Mist Animal';
+  let family = 'Atmosphere';
+  if(p.groove > 0.34 && p.energy > 0.10 && bpmHint >= 82){
+    creature = p.forward > 0.48 ? 'Motion Blob' : 'Groove Blob';
+    family = 'Groove';
+  } else if(p.lift > 0.34 && p.energy > 0.13){
+    creature = p.melodic > 0.42 ? 'Golden Dancer' : 'Light Dancer';
+    family = 'Celebration';
+  } else if(p.forward > 0.42 && p.energy > 0.11){
+    creature = 'Journey Blob';
+    family = 'Journey';
+  } else if(p.melodic > 0.43 && p.energy > 0.09){
+    creature = 'Sky Lantern';
+    family = 'Expression';
+  } else if(p.dream > 0.42 || bpmHint < 84){
+    creature = 'Mist Animal';
+    family = 'Atmosphere';
+  }
+  return {...p, creature, family, colour, feel, breathe, shape, personality, bpmHint};
+}
+
+function creatureState(aura, stats){
+  const energy = stats?.energy ?? 0;
+  const groove = aura?.groove ?? 0;
+  const lift = aura?.lift ?? 0;
+  const melodic = aura?.melodic ?? 0;
+  const onset = stats?.onset ?? 0;
+  if(onset > 0.18 || lift > 0.62) return 'Bursting';
+  if(groove > 0.58 && energy > 0.14) return 'Grooving';
+  if(melodic > 0.58 && energy > 0.12) return 'Reaching';
+  if(energy < 0.08) return 'Breathing';
+  if(lift > 0.48) return 'Opening';
+  return 'Evolving';
+}
+
+
+function visualCreatureName(stats={}, dna=null){
+  // The renderer already knows the live shape. Use that visual truth for the label
+  // so a visible serpent is not called a Mist Animal by old song-DNA fallback logic.
+  const shape = stats.shape || dna?.shape || 'Cloud';
+  const behaviour = stats.behaviour || '';
+  const personality = stats.personality || '';
+  const groove = stats.groove || 0;
+  const lift = stats.lift || 0;
+  const melodic = stats.melodic || 0;
+  const energy = stats.energy || 0;
+
+  if(behaviour === 'Groove' || groove > 0.50) return 'Groove Blob';
+  if(behaviour === 'Flow' || behaviour === 'Wave') return 'Motion Blob';
+  if(shape === 'Wing' || behaviour === 'Ascend' || melodic > 0.58) return 'Sky Lantern';
+  if(shape === 'Flame' || behaviour === 'Pulse' || lift > 0.62) return 'Firebird';
+  if(shape === 'Eye' || personality === 'Watcher') return 'Corridor Eye';
+  if(shape === 'Spiral' || personality === 'Stoner') return 'Purple Lantern';
+  if((dna?.family === 'Celebration' || personality === 'Dancer') && energy > 0.12) return 'Golden Dancer';
+  if(dna?.creature && dna.creature !== 'Mist Animal') return dna.creature;
+  return 'Mist Animal';
+}
+
+
+
+const CREATURE_PRESETS = {
+  Auto: null,
+  'Mist Animal': {creature:'Mist Animal', shape:'Cloud', behaviour:'Drift', personality:'Dreamer', feel:'Reflective', breathe:'Slow Tide'},
+  'Groove Blob': {creature:'Groove Blob', shape:'Cloud', behaviour:'Groove', personality:'Dancer', feel:'Playful', breathe:'Heartbeat'},
+  'Motion Blob': {creature:'Motion Blob', shape:'Cloud', behaviour:'Flow', personality:'Explorer', feel:'Driving', breathe:'Forward Surge'},
+  'Golden Dancer': {creature:'Golden Dancer', shape:'Cloud', behaviour:'Bloom', personality:'Dancer', feel:'Joyful', breathe:'Heartbeat'},
+  'Groove Serpent': {creature:'Groove Serpent', shape:'Serpent', behaviour:'Groove', personality:'Dancer', feel:'Confident', breathe:'Heartbeat'},
+  'Ocean Runner': {creature:'Ocean Runner', shape:'Wave', behaviour:'Flow', personality:'Explorer', feel:'Adventurous', breathe:'Forward Surge'},
+  'Sky Lantern': {creature:'Sky Lantern', shape:'Wing', behaviour:'Ascend', personality:'Guide', feel:'Hopeful', breathe:'Lift'},
+  'Firebird': {creature:'Firebird', shape:'Flame', behaviour:'Pulse', personality:'Rebel', feel:'Triumphant', breathe:'Storm'},
+  'Corridor Eye': {creature:'Corridor Eye', shape:'Eye', behaviour:'Watch', personality:'Watcher', feel:'Uneasy', breathe:'Holding Breath'},
+  'Purple Lantern': {creature:'Purple Lantern', shape:'Spiral', behaviour:'Drift', personality:'Stoner', feel:'Dreamlike', breathe:'Meditation'}
+};
+
+function applyCreatureOverride(aura, overrideName){
+  const preset = CREATURE_PRESETS[overrideName];
+  if(!preset) return aura;
+  return {
+    ...aura,
+    ...preset,
+    forcedCreature: preset.creature,
+    certainty: Math.max(aura.certainty || 0, 0.92)
+  };
+}
+
 function App(){
   const canvasRef = useRef(null);
   const fileRef = useRef(null);
@@ -140,6 +252,9 @@ function App(){
   const [creatureDNA, setCreatureDNA] = useState(null);
   const [reveal, setReveal] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [creatureOverride, setCreatureOverride] = useState('Auto');
+  const creatureOverrideRef = useRef('Auto');
+  useEffect(()=>{ creatureOverrideRef.current = creatureOverride; }, [creatureOverride]);
   const analysisRef = useRef([]);
 
   const journey = useMemo(()=>buildJourney(timeline), [timeline]);
@@ -152,6 +267,7 @@ function App(){
     breathe: dominantFromTimeline(timeline, 'breathe'),
     creature: dominantFromTimeline(timeline, 'creature')
   }), [timeline]);
+  const displayCreature = creatureOverride !== 'Auto' ? creatureOverride : visualCreatureName(stats, creatureDNA);
 
   useEffect(()=>{
     const onFs = () => setIsFullscreen(!!document.fullscreenElement);
@@ -237,15 +353,7 @@ function App(){
       analysisRef.current = final;
       timeRef.current.bpmHint = bpmHint;
       setTimeline(final);
-      const dna = {
-        creature: dominantFromTimeline(final, 'creature'),
-        feel: dominantFromTimeline(final, 'feel'),
-        breathe: dominantFromTimeline(final, 'breathe'),
-        shape: dominantFromTimeline(final, 'shape'),
-        personality: dominantFromTimeline(final, 'personality'),
-        colour: dominantFromTimeline(final, 'dominant'),
-        bpmHint
-      };
+      const dna = chooseCreatureDNA(final, bpmHint);
       setCreatureDNA(dna);
       setAnalysisReady(true);
     }catch(err){
@@ -394,7 +502,8 @@ function App(){
     const light = lerp(timeRef.current.light ?? rawCol.light, target.l ?? rawCol.light, memory);
     timeRef.current.hue = hue; timeRef.current.sat = sat; timeRef.current.light = light;
     const col = {hue, sat, light, dominant: colourName(hue, light, sat)};
-    const aura = {...rawAura, ...(target || {})};
+    const activeCreatureOverride = creatureOverrideRef.current || 'Auto';
+    const aura = applyCreatureOverride({...rawAura, dominant: col.dominant, h: col.hue, s: col.sat, l: col.light}, activeCreatureOverride);
     const heartRate = timeRef.current.bpmHint / 60;
     const heartHue = angleLerp(timeRef.current.heartHue ?? col.hue, rawCol.hue, timeRef.current.bpmHint < 90 ? 0.035 : timeRef.current.bpmHint > 125 ? 0.095 : 0.060);
     const targetHeartSize = clamp(0.18 + smoothEnergy*0.58 + rawAura.lift*0.18 + rawAura.melodic*0.10, 0.16, 0.82);
@@ -407,7 +516,8 @@ function App(){
     setReveal(timeRef.current.reveal);
     const heartbeat = clamp(smoothEnergy*0.58 + flux*0.24 + bass*0.22 + (1-Math.abs(pan))*0.08);
     const reaction = timeRef.current.lastDanceEvent || (heartbeat > 0.72 ? 'Dancing' : heartbeat > 0.44 ? 'Moving' : 'Breathing');
-    const currentStats = {energy:smoothEnergy,bass,lowMid,mid,high,hue:col.hue,heartHue,heartSize,dominant:col.dominant,pan,stereoSpread,heartbeat,reaction,...aura};
+    const liveState = creatureState(aura, {energy:smoothEnergy, onset, flux});
+    const currentStats = {energy:smoothEnergy,bass,lowMid,mid,high,hue:col.hue,heartHue,heartSize,dominant:col.dominant,pan,stereoSpread,heartbeat,reaction,state:liveState,...aura};
     setStats(currentStats);
 
     const signature = `${col.dominant}|${aura.personality}|${aura.shape}`;
@@ -420,7 +530,7 @@ function App(){
       timeRef.current.idx = idx;
       setTimeline(prev => {
         const next = [...prev];
-        next[idx] = {h:col.hue, s:col.sat, l:col.light, energy:smoothEnergy, dominant:col.dominant, behaviour:aura.behaviour, shape:aura.shape, personality:aura.personality, creature:aura.creature, feel:aura.feel, breathe:aura.breathe};
+        next[idx] = {h:col.hue, s:col.sat, l:col.light, energy:smoothEnergy, dominant:col.dominant, behaviour:aura.behaviour, shape:aura.shape, personality:aura.personality, creature:aura.creature, state:liveState, feel:aura.feel, breathe:aura.breathe};
         return next;
       });
       wakeRef.current.push({type:'breath', h:heartHue, s:col.sat, l:col.light, age:0, life:1, pan:pan*0.35, r:40 + heartSize*110, spin:Math.random()*Math.PI*2, power:0.20 + smoothEnergy*0.22});
@@ -531,13 +641,13 @@ function App(){
     const creaturePoint = (p, scale=1) => {
       const phase = now*(0.14 + speed*0.52) + seed*0.01;
       if(aura.shape === 'Serpent'){
-        const snap = onset*0.28 + flux*0.18;
+        const snap = onset*0.18 + flux*0.12;
         const x = w*(0.03 + p*0.94);
         const y = h*(0.53 + Math.sin(phase*2.35 + p*7.9)*0.155*scale + Math.sin(phase*1.10 + p*3.4)*0.052 + Math.sin(now*heartRate*6.28 + p*18)*snap);
         return [x,y];
       }
       if(aura.shape === 'Wave'){
-        const lift = onset*0.18 + rawAura.lift*0.06;
+        const lift = onset*0.12 + rawAura.lift*0.04;
         const x = w*(0.035 + p*0.93);
         const y = h*(0.54 + Math.sin(phase*1.45 + p*6.2)*0.175*scale + Math.sin(phase*0.56 + p*2.6)*0.065 - lift*Math.sin(p*Math.PI));
         return [x,y];
@@ -558,16 +668,15 @@ function App(){
       // Cloud / mist default: fills more of the screen, drifting like smoke.
       const a = phase*0.55 + p*Math.PI*2.0;
       const breathing = 1 + Math.sin(now*heartRate*Math.PI*2 + p*5.5)*0.045 + onset*0.10;
-      const rr = Math.min(w,h)*(0.075 + 0.17*Math.sin(p*Math.PI) + smoothEnergy*0.060) * breathing;
-      // More creature silhouette, less fog blanket.
-      return [w/2 + Math.cos(a)*rr*1.58 + Math.sin(a*0.41)*w*0.070, h/2 + Math.sin(a*0.88)*rr*0.98 + Math.cos(a*0.23)*h*0.034];
+      const rr = Math.min(w,h)*(0.09 + 0.20*Math.sin(p*Math.PI) + smoothEnergy*0.075) * breathing;
+      return [w/2 + Math.cos(a)*rr*1.42 + Math.sin(a*0.41)*w*0.055, h/2 + Math.sin(a*0.88)*rr*0.92 + Math.cos(a*0.23)*h*0.025];
     };
 
     // Memory wake: coloured scars/blooms remember what hit the creature a few seconds ago.
     // Centre-ish = recent. Outer/smokier = 5-10 seconds ago. Pan controls left/right arrival.
     wakeRef.current = wakeRef.current.map(wk => {
       const age = (wk.age||0)+1/60;
-      const decay = wk.decay || 9.8;
+      const decay = wk.decay || 8.8;
       return {...wk, age, life: Math.max(0, 1-age/decay)};
     }).filter(wk => wk.life > 0.015);
     wakeRef.current.forEach((wk, i) => {
@@ -604,7 +713,7 @@ function App(){
           const scarA = a + j*1.22 + Math.sin(now*0.55+i)*0.45;
           const sx = x + Math.cos(scarA)*r*(0.18 + j*0.035);
           const sy = y + Math.sin(scarA*0.70)*r*(0.12 + j*0.025);
-          drawBlob(sx, sy, r*(0.18+j*0.050), wk.h + j*5, 0.115*wk.life*wk.power*(1-p*0.20), 42+smoothEnergy*18, wk.s);
+          drawBlob(sx, sy, r*(0.18+j*0.050), wk.h + j*5, 0.085*wk.life*wk.power*(1-p*0.25), 42+smoothEnergy*18, wk.s);
         }
       } else if(wk.type === 'synth-scar'){
         // Visible scar: a saturated wound/vein that travels out and becomes smoke.
@@ -612,7 +721,7 @@ function App(){
           const scarA = a + j*1.42 + Math.sin(now*0.3+i)*0.3;
           const sx = x + Math.cos(scarA)*r*0.28;
           const sy = y + Math.sin(scarA*0.82)*r*0.18;
-          drawBlob(sx, sy, r*(0.34+j*0.075), wk.h + j*8, 0.165*wk.life*wk.power*(1-p*0.18), 34+smoothEnergy*22, wk.s);
+          drawBlob(sx, sy, r*(0.34+j*0.075), wk.h + j*8, 0.125*wk.life*wk.power*(1-p*0.22), 34+smoothEnergy*22, wk.s);
         }
       } else {
         // Vocal/other blooms: soft soul density, not a hard white dot.
@@ -634,11 +743,9 @@ function App(){
     points.forEach(([x,y], i) => {
       const p = i/(steps-1 || 1);
       const localPulse = 1 + Math.sin(now*heartRate*Math.PI*2 + p*4.8)*0.035;
-      const baseR = (aura.shape === 'Serpent' || aura.shape === 'Wave') ? 82 : 92;
-      const r = (baseR + smoothEnergy*138 + Math.sin(now*0.65+p*8)*20 + onset*42) * localPulse;
-      // More defined animal body: dense inner glow with a softer smoky edge.
-      drawBlob(x,y,r*1.12,(col.hue+p*24)%360,0.055+smoothEnergy*0.072,30+smoothEnergy*17);
-      drawBlob(x,y,r*0.62,(col.hue+p*18)%360,0.105+smoothEnergy*0.105,42+smoothEnergy*22);
+      const baseR = (aura.shape === 'Serpent' || aura.shape === 'Wave') ? 104 : 118;
+      const r = (baseR + smoothEnergy*175 + Math.sin(now*0.65+p*8)*22 + onset*45) * localPulse;
+      drawBlob(x,y,r,(col.hue+p*24)%360,0.085+smoothEnergy*0.125,34+smoothEnergy*20);
       // Smoke-like broken outline: faint fragments drift off the creature boundary.
       if(i % 2 === 0){
         const edgeA = now*0.11 + p*7.1 + seed*0.002;
@@ -654,10 +761,10 @@ function App(){
     for(let i=0;i<soulCount;i++){
       const pp = (0.20 + i*0.19 + Math.sin(now*0.05 + seed + i)*0.05) % 1;
       const [sx,sy] = creaturePoint(pp, 0.8);
-      const soulR = Math.min(w,h) * (0.025 + heartSize*0.026) * heartPulse * (0.72 + i*0.07);
+      const soulR = Math.min(w,h) * (0.035 + heartSize*0.035) * heartPulse * (0.75 + i*0.08);
       const soulHue = angleLerp(heartHue, col.hue, i/soulCount*0.35);
-      drawBlob(sx, sy, soulR*2.1, soulHue, 0.050 + smoothEnergy*0.040, 68, 34);
-      drawBlob(sx, sy, soulR*0.68, 54, 0.060 + smoothEnergy*0.045, 80, 26);
+      drawBlob(sx, sy, soulR*2.4, soulHue, 0.070 + smoothEnergy*0.055, 68, 34);
+      drawBlob(sx, sy, soulR*0.9, 54, 0.048 + smoothEnergy*0.050, 78, 28);
     }
 
     // Very soft current-emotion shimmer through the creature, no circles/rings.
@@ -672,8 +779,8 @@ function App(){
   return <div className="app" onDragOver={e=>e.preventDefault()} onDrop={handleDrop}>
     <audio ref={audioRef} onEnded={()=>setIsPlaying(false)} />
     <header>
-      <div><h1>Eleria Aura</h1><p>Drop a song. Press play. Watch the creature react, remember, and dance in stereo.</p></div>
-      <div className="badge">MOS Aura module v1.2.2</div>
+      <div><h1>Eleria Aura</h1><p>Drop a song. Press play. Creature picker wired. Choose Auto or force an animal.</p></div>
+      <div className="badge">MOS Aura module v1.3.4</div>
     </header>
     <main>
       <section className="left">
@@ -699,14 +806,15 @@ function App(){
             <div><Footprints size={16}/><span>Reaction</span><b>{stats.reaction || 'Breathing'}</b></div>
             <div><Gauge size={16}/><span>Heartbeat</span><b>{pct(stats.heartbeat || stats.energy)}%</b></div>
             <div><Gauge size={16}/><span>Reveal</span><b>{pct(reveal)}%</b></div>
-            <div className="wide"><Eye size={16}/><span>Creature</span><b>{creatureDNA?.creature || stats.creature}</b></div>
+            <div className="wide"><Eye size={16}/><span>Creature</span><b>{displayCreature} · {stats.state || 'Evolving'}</b></div>
           </div>
           <div className="confidence"><i><em style={{width:`${pct(stats.certainty)}%`}}/></i><small>{pct(stats.certainty)}% confidence</small></div>
         </div>
 
         <div className="summary-card">
           <h2>Creature DNA</h2>
-          <div className="summary-row"><span>Creature</span><b>{creatureDNA?.creature || summary.creature}</b></div>
+          <div className="summary-row"><span>Base Creature</span><b>{creatureOverride !== 'Auto' ? creatureOverride : visualCreatureName({shape:summary.shape, behaviour:summary.behaviour, personality:summary.personality}, creatureDNA)}</b></div>
+          <div className="summary-row"><span>Family</span><b>{creatureDNA?.family || 'Evolving'}</b></div>
           <div className="summary-row"><span>DNA Colour</span><b>{creatureDNA?.colour || summary.colour}</b></div>
           <div className="summary-row"><span>DNA Breathe</span><b>{creatureDNA?.breathe || summary.breathe}</b></div>
           <div className="summary-row"><span>Playback</span><b>Unique</b></div>
@@ -730,8 +838,14 @@ function App(){
 
       <section ref={stageRef} className="stage">
         <canvas ref={canvasRef}/>
-        <div className="overlay"><strong>{creatureDNA?.creature || stats.creature}</strong><span>{stats.feel} · Heart {stats.dominant} · {stats.shape} · {stats.breathe}</span><i>Reveal {pct(reveal)}%</i></div>
-        <div className="question"><Cloud size={18}/> Press any key to play/pause. The Aura remembers. The creature is revealed.</div>
+        <div className="creature-picker">
+          <label>Animal</label>
+          <select value={creatureOverride} onChange={e=>{ creatureOverrideRef.current = e.target.value; setCreatureOverride(e.target.value); }}>
+            {Object.keys(CREATURE_PRESETS).map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </div>
+        <div className="overlay"><strong>{displayCreature} · {stats.state || 'Evolving'}</strong><span>{stats.feel} · Heart {stats.dominant} · {stats.shape} · {stats.breathe}</span><i>Reveal {pct(reveal)}%</i></div>
+        <div className="question"><Cloud size={18}/> Press any key to play/pause. Pick an animal bottom-left, or leave Auto.</div>
       </section>
     </main>
 
@@ -744,7 +858,7 @@ function App(){
         })}
       </div>
       <div className="journey">
-        {journey.length ? journey.map((j,i)=><div key={`${j.key}-${i}`} className="journey-pill" style={{borderColor:`hsl(${j.h}, ${j.s}%, 48%)`, background:`linear-gradient(135deg, hsla(${j.h}, ${j.s}%, 32%, .45), rgba(255,255,255,.045))`}}><b>{j.dominant}</b><span>{j.feel || j.shape} · {j.shape} · {j.personality}</span></div>) : <p>Play a song and Aura will reveal its creature: heart, wake, breathe, and final form.</p>}
+        {journey.length ? journey.map((j,i)=><div key={`${j.key}-${i}`} className="journey-pill" style={{borderColor:`hsl(${j.h}, ${j.s}%, 48%)`, background:`linear-gradient(135deg, hsla(${j.h}, ${j.s}%, 32%, .45), rgba(255,255,255,.045))`}}><b>{j.dominant}</b><span>{j.feel || j.shape} · {j.state || j.shape} · {j.personality}</span></div>) : <p>Play a song and Aura will reveal its creature: heart, wake, breathe, and final form.</p>}
       </div>
     </footer>
   </div>
