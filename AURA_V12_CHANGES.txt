@@ -1,0 +1,10 @@
+Aura v1.2
+- Built from the latest v1.1/full-screen source.
+- Keeps Full Screen and any-key play/pause.
+- Removes no current controls except leaves existing Play/Full Screen/Reset.
+- Adds Heartbeat and Reaction readouts.
+- Stronger synth scars with longer memory.
+- Stereo/BK vocal left/right blooms.
+- Chord-change full-body shockwaves.
+- Stronger snare scars and longer event memory.
+- Keeps bass groove pockets as black gravity zones.
